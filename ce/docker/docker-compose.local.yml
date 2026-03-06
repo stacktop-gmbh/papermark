@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-papermark}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-papermark}
+      POSTGRES_DB: ${POSTGRES_DB:-papermark}
+    ports:
+      - "${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - papermark_ce_local_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-papermark} -d ${POSTGRES_DB:-papermark}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      args:
+        NODE_IMAGE: ${APP_IMAGE:-node:24-alpine}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    command:
+      - sh
+      - /app/ce/docker/start-app.sh
+    environment:
+      NODE_ENV: development
+      PORT: ${WEB_PORT:-3003}
+      POSTGRES_PRISMA_URL: postgresql://${POSTGRES_USER:-papermark}:${POSTGRES_PASSWORD:-papermark}@postgres:5432/${POSTGRES_DB:-papermark}?schema=public
+      POSTGRES_PRISMA_URL_NON_POOLING: postgresql://${POSTGRES_USER:-papermark}:${POSTGRES_PASSWORD:-papermark}@postgres:5432/${POSTGRES_DB:-papermark}?schema=public
+      POSTGRES_PRISMA_SHADOW_URL: postgresql://${POSTGRES_USER:-papermark}:${POSTGRES_PASSWORD:-papermark}@postgres:5432/${POSTGRES_SHADOW_DB:-papermark_shadow}?schema=public
+      NEXTAUTH_URL: http://localhost:${WEB_PORT:-3003}
+      NEXT_PUBLIC_BASE_URL: http://localhost:${WEB_PORT:-3003}
+      NEXT_PUBLIC_MARKETING_URL: http://localhost:${WEB_PORT:-3003}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3003}:${WEB_PORT:-3003}"
+    volumes:
+      - ../..:/app
+      - papermark_ce_local_node_modules:/app/node_modules
+      - papermark_ce_local_next:/app/.next
+      - papermark_ce_local_npm_cache:/root/.npm
+
+volumes:
+  papermark_ce_local_pgdata:
+  papermark_ce_local_node_modules:
+  papermark_ce_local_next:
+  papermark_ce_local_npm_cache:
